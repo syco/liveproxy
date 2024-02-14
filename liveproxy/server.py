@@ -60,70 +60,73 @@ class HTTPRequest(BaseHTTPRequestHandler):
         log.info(f"Address: {self.address_string()}")
 
         if self.path.startswith(("/base64/")):
-            # http://127.0.0.1:53422/base64/STREAMLINK-COMMANDS/
-            # http://127.0.0.1:53422/base64/YOUTUBE-DL-COMMANDS/
-            # http://127.0.0.1:53422/base64/YT-DLP-COMMANDS/
+            # http://127.0.0.1:53422/base64/STREAMLINK-COMMANDS[|STREAMLINK-COMMANDS|YOUTUBE-DL-COMMANDS|YT-DLP-COMMANDS]/
+            # http://127.0.0.1:53422/base64/YOUTUBE-DL-COMMANDS[|STREAMLINK-COMMANDS|YOUTUBE-DL-COMMANDS|YT-DLP-COMMANDS]/
+            # http://127.0.0.1:53422/base64/YT-DLP-COMMANDS[|STREAMLINK-COMMANDS|YOUTUBE-DL-COMMANDS|YT-DLP-COMMANDS]/
             try:
-                arglist = shlex.split(base64.urlsafe_b64decode(self.path.split("/")[2]).decode("UTF-8"))
+                commands = base64.urlsafe_b64decode(self.path.split("/")[2]).decode("UTF-8").split('|')
             except base64.binascii.Error as err:
                 log.error(f"invalid base64 URL: {err}")
                 self._headers(404, "text/html", connection="close")
                 return
         elif self.path.startswith(("/cmd/")):
-            # http://127.0.0.1:53422/cmd/streamlink https://example best/
+            # http://127.0.0.1:53422/cmd/streamlink https://example best[|streamlink https://example best]/
             self.path = self.path[5:]
             if self.path.endswith("/"):
                 self.path = self.path[:-1]
-            arglist = shlex.split(unquote(self.path))
+            commands = unquote(self.path).split('|')
         else:
             self._headers(404, "text/html", connection="close")
             return
 
-        prog = which(arglist[0], mode=os.F_OK | os.X_OK)
-        if not prog:
-            log.error(f"invalid prog, can not find '{arglist[0]}' on your system")
-            return
+        arglists = [shlex.split(command) for command in commands]
 
-        log.debug(f"Video-Software: {prog}")
-        if _re_streamlink.search(prog):
-            arglist.extend(["--stdout", "--loglevel", "none"])
-        elif _re_youtube_dl.search(prog):
-            arglist.extend(["-o", "-", "--quiet", "--no-playlist", "--no-warnings", "--no-progress"])
-        else:
-            log.error("Video-Software is not supported.")
-            self._headers(404, "text/html", connection="close")
-            return
+        for arglist in arglists:
+            prog = which(arglist[0], mode=os.F_OK | os.X_OK)
+            if not prog:
+                log.error(f"invalid prog, can not find '{arglist[0]}' on your system")
+                continue
 
-        log.debug(f"{arglist!r}")
-        self._headers(200, "video/unknown")
-        process = subprocess.Popen(arglist,
-                                   stderr=subprocess.PIPE,
-                                   stdin=subprocess.PIPE,
-                                   stdout=subprocess.PIPE,
-                                   shell=False,
-                                   )
-
-        log.info(f"Stream started {random_id}")
-        try:
-             while True:
-                read = process.stdout.readline()
-                if read:
-                    self.wfile.write(read)
-                sys.stdout.flush()
-                if process.poll() is not None:
-                    self.wfile.close()
-                    break
-        except socket.error as e:
-            if isinstance(e.args, tuple):
-                if not e.errno in ACCEPTABLE_ERRNO:
-                    log.error(f"E1: {e!r}")
+            log.debug(f"Video-Software: {prog}")
+            if _re_streamlink.search(prog):
+                arglist.extend(["--stdout", "--loglevel", "none"])
+            elif _re_youtube_dl.search(prog):
+                arglist.extend(["-o", "-", "--quiet", "--no-playlist", "--no-warnings", "--no-progress"])
             else:
-                log.error(f"E2: {e!r}")
+                log.error("Video-Software is not supported.")
+                self._headers(404, "text/html", connection="close")
+                continue
 
-        log.info(f"Stream ended {random_id}")
-        process.terminate()
-        process.wait()
-        process.kill()
+            log.debug(f"{arglist!r}")
+            self._headers(200, "video/unknown")
+            process = subprocess.Popen(arglist,
+                                       stderr=subprocess.PIPE,
+                                       stdin=subprocess.PIPE,
+                                       stdout=subprocess.PIPE,
+                                       shell=False,
+                                       )
+
+            log.info(f"Stream started {random_id}")
+            try:
+                 while True:
+                    read = process.stdout.readline()
+                    if read:
+                        self.wfile.write(read)
+                    sys.stdout.flush()
+                    if process.poll() is not None:
+                        self.wfile.close()
+                        break
+            except socket.error as e:
+                if isinstance(e.args, tuple):
+                    if not e.errno in ACCEPTABLE_ERRNO:
+                        log.error(f"E1: {e!r}")
+                else:
+                    log.error(f"E2: {e!r}")
+
+            log.info(f"Stream ended {random_id}")
+            process.terminate()
+            process.wait()
+            process.kill()
 
 
 class Server(HTTPServer):
