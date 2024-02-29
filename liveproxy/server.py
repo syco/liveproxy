@@ -24,6 +24,7 @@ try:
 except AttributeError:
     pass  # Not windows
 
+_re_ffmpeg = re.compile(r"ffmpeg", re.IGNORECASE)
 _re_streamlink = re.compile(r"streamlink", re.IGNORECASE)
 _re_youtube_dl = re.compile(r"(?:youtube|yt)[_-]dl(?:p)?", re.IGNORECASE)
 
@@ -60,9 +61,10 @@ class HTTPRequest(BaseHTTPRequestHandler):
         log.info(f"Address: {self.address_string()}")
 
         if self.path.startswith(("/base64/")):
-            # http://127.0.0.1:53422/base64/STREAMLINK-COMMANDS[|STREAMLINK-COMMANDS|YOUTUBE-DL-COMMANDS|YT-DLP-COMMANDS]/
-            # http://127.0.0.1:53422/base64/YOUTUBE-DL-COMMANDS[|STREAMLINK-COMMANDS|YOUTUBE-DL-COMMANDS|YT-DLP-COMMANDS]/
-            # http://127.0.0.1:53422/base64/YT-DLP-COMMANDS[|STREAMLINK-COMMANDS|YOUTUBE-DL-COMMANDS|YT-DLP-COMMANDS]/
+            # http://127.0.0.1:53422/base64/STREAMLINK-COMMANDS[|STREAMLINK-COMMANDS|FFMPEG-COMMANDS|YOUTUBE-DL-COMMANDS|YT-DLP-COMMANDS]/
+            # http://127.0.0.1:53422/base64/FFMPEG-COMMANDS[|STREAMLINK-COMMANDS|FFMPEG-COMMANDS|YOUTUBE-DL-COMMANDS|YT-DLP-COMMANDS]/
+            # http://127.0.0.1:53422/base64/YOUTUBE-DL-COMMANDS[|STREAMLINK-COMMANDS|FFMPEG-COMMANDS|YOUTUBE-DL-COMMANDS|YT-DLP-COMMANDS]/
+            # http://127.0.0.1:53422/base64/YT-DLP-COMMANDS[|STREAMLINK-COMMANDS|FFMPEG-COMMANDS|YOUTUBE-DL-COMMANDS|YT-DLP-COMMANDS]/
             try:
                 commands = base64.urlsafe_b64decode(self.path.split("/")[2]).decode("UTF-8").split('|')
             except base64.binascii.Error as err:
@@ -71,6 +73,7 @@ class HTTPRequest(BaseHTTPRequestHandler):
                 return
         elif self.path.startswith(("/cmd/")):
             # http://127.0.0.1:53422/cmd/streamlink https://example best[|streamlink https://example best]/
+            # http://127.0.0.1:53422/cmd/streamlink -i https://example[|streamlink -i https://example]/
             self.path = self.path[5:]
             if self.path.endswith("/"):
                 self.path = self.path[:-1]
@@ -88,7 +91,9 @@ class HTTPRequest(BaseHTTPRequestHandler):
                 continue
 
             log.debug(f"Video-Software: {prog}")
-            if _re_streamlink.search(prog):
+            if _re_ffmpeg.search(prog):
+                arglist.extend(["-hide_banner", "-loglevel", "error", "-nostats", "-nostdin", "-f", "mpegts", "-"])
+            elif _re_streamlink.search(prog):
                 arglist.extend(["--stdout", "--loglevel", "none"])
             elif _re_youtube_dl.search(prog):
                 arglist.extend(["-o", "-", "--quiet", "--no-playlist", "--no-warnings", "--no-progress"])
