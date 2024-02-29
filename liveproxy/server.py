@@ -2,6 +2,7 @@ import base64
 import errno
 import logging
 import os
+import random
 import re
 import shlex
 import socket
@@ -60,7 +61,7 @@ class HTTPRequest(BaseHTTPRequestHandler):
         log.info(f"Client: {self.client_address}")
         log.info(f"Address: {self.address_string()}")
 
-        if self.path.startswith(("/base64/")):
+        if self.path.startswith(("/base64/")) or self.path.startswith(("/random-base64/")):
             # http://127.0.0.1:53422/base64/STREAMLINK-COMMANDS[|STREAMLINK-COMMANDS|FFMPEG-COMMANDS|YOUTUBE-DL-COMMANDS|YT-DLP-COMMANDS]/
             # http://127.0.0.1:53422/base64/FFMPEG-COMMANDS[|STREAMLINK-COMMANDS|FFMPEG-COMMANDS|YOUTUBE-DL-COMMANDS|YT-DLP-COMMANDS]/
             # http://127.0.0.1:53422/base64/YOUTUBE-DL-COMMANDS[|STREAMLINK-COMMANDS|FFMPEG-COMMANDS|YOUTUBE-DL-COMMANDS|YT-DLP-COMMANDS]/
@@ -71,7 +72,7 @@ class HTTPRequest(BaseHTTPRequestHandler):
                 log.error(f"invalid base64 URL: {err}")
                 self._headers(404, "text/html", connection="close")
                 return
-        elif self.path.startswith(("/cmd/")):
+        elif self.path.startswith(("/cmd/")) or self.path.startswith(("/random-cmd/")):
             # http://127.0.0.1:53422/cmd/streamlink https://example best[|streamlink https://example best]/
             # http://127.0.0.1:53422/cmd/streamlink -i https://example[|streamlink -i https://example]/
             self.path = self.path[5:]
@@ -81,6 +82,9 @@ class HTTPRequest(BaseHTTPRequestHandler):
         else:
             self._headers(404, "text/html", connection="close")
             return
+
+        if self.path.startswith(("/random-")) and len(commands) > 1:
+            random.shuffle(commands)
 
         arglists = [shlex.split(command) for command in commands]
 
