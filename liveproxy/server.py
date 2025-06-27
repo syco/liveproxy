@@ -96,7 +96,7 @@ class HTTPRequest(BaseHTTPRequestHandler):
 
             log.debug(f"Video-Software: {prog}")
             if _re_ffmpeg.search(prog):
-                arglist.extend(["-hide_banner", "-loglevel", "error", "-nostats", "-nostdin", "-f", "mpegts", "-"])
+                arglist.extend(["-hide_banner", "-loglevel", "error", "-nostats", "-nostdin", "-"])
             elif _re_streamlink.search(prog):
                 arglist.extend(["--stdout", "--loglevel", "none"])
             elif _re_youtube_dl.search(prog):
